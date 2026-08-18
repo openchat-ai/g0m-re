@@ -67,7 +67,9 @@ g0m-re/
 ├── kernels/
 │   └── gemm_microbench.cl  ← OpenCL GEMM 微基准（真机量化算力/带宽）
 ├── tools/
-│   └── bench_ocl_host.c ← 微基准宿主（真机 cc -lOpenCL 编译）
+│   ├── bench_ocl_host.c     ← 微基准宿主（真机 cc -lOpenCL 编译）
+│   ├── probe_g0m.ps1        ← Windows 真机探针（PCI/ICD/OpenCL 枚举）
+│   └── g0m_hwsettings.ps1   ← HWSettings 注册表配置工具（list/get/set/del/backup/known）
 └── docs/
     ├── probe-log.md          ← [0] 判定 + 离线静态取证记录
     ├── clinfo-prediction.md  ← 真机 clinfo 验收清单（静态预测）

@@ -121,3 +121,32 @@ WDDM qwMemorySize + dxdiag 双源一致。
 - 分支 [B] 若走 **Windows**：死路，驱动无计算接口 → 必须上 **Linux fh2m 驱动**才可能
   枚举到 OpenCL/Vulkan（静态分析已确认 libFTOCL / libVK_FANT 存在）
 - 分支 [C] 仅当 Linux 驱动装上后仍枚举不到时触发
+
+### 手动配置通道：HWSettings 注册表（2026-08-18，续探）
+
+**结论：驱动自带注册表配置通道，内存分配行为可手动调整。**
+但 dxdiag 的 Shared Memory **数字本身改不了**（WDDM 按 50% 物理内存算，闭源驱动内定）；
+手动能控制的是**分配行为**（哪些对象进 GTT/系统内存、哪些常驻板载 4GB）。
+
+证据：
+- `innoumd64.dll` 硬编码路径 `SYSTEM\CurrentControlSet\Services\powervr\PowerVREurasia\HWSettings\`
+  （IMG PowerVR EURASIA 血统标准配置机制，子键 `PVRLDDMKMD`=KMD / `PVRLDDMUMD`=UMD）
+- `innokmd64.sys` 含 `IoOpenDeviceRegistryKey` 符号（读设备键 Class\0007）
+- 现网 `HWSettings\PVRLDDMKMD` 已存在且生效：`PowerManagement=1`、`DpuMatch=-1`、
+  `DpuMatchSupport=[32B]` → 手动加 DWORD 即被驱动读取
+- 已挖出的候选开关名（二进制字符串，需实测确认哪些真被读）：
+  - KMD：`ForceGTTWriteWithAXIDMA`、`ForceNonsurfaceInApertureSegment`、
+    `SupportAllocationInApertureSegment`
+  - UMD：`DisableOfferReclaim`、`ForceConstantsMemory`、`ForceVbIbNonlocal`、`ForceAlwaysResident`
+  - GL ICD：`EnableAllocGttMem`、`GLUseGttForBuffer`、`CbufAllocGtt`
+
+**交付工具**：`tools/g0m_hwsettings.ps1`（无参数=交互菜单 / list/get/set/del/backup/known，
+set 写 DWORD 需管理员，修改后需重启驱动/系统生效）。已实测全流程：
+- 无参数进入交互菜单，编号选择开关（显示 编号/别名/当前值/Scope/中文释义），
+  输入 0/1 设置、`n` 删除、回车默认 1；含查看/备份/退出
+- 实测：菜单选 `gttallow` 设 1 → `HKLM\...\PVRLDDMKMD\SupportAllocationInApertureSegment=1`
+  （已清理恢复）；选 12 查看现网配置正常（KMD: DpuMatch=-1 / DpuMatchSupport=[32B] /
+  PowerManagement=1，UMD 空键）
+- 菜单删除走 `Remove-ItemProperty`，未设置项删除静默成功
+- 测试用 cmd 管道 `<` 喂 stdin；PowerShell 管道喂 stdin 时 Read-Host 到 EOF 返回 null 会死循环，
+  仅影响自动化测试，真实终端无此问题
