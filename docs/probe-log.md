@@ -69,3 +69,55 @@ OpenCL/Vulkan 计算栈。** 差异只来自它是"无本地显存 + 弱算力"�
 4. 试跑 llama.cpp Vulkan 后端（`GGML_VK_VISIBLE_DEVICES=0 llama-bench -ngl 99`，
    详见 docs/llama-borrow-path.md 无 gate 依据）
 5. 若 OOM/慢 → 对照"内存架构定案"（UMD 禁 GTT），改用 CPU
+
+## Windows 真机探针复核（2026-08-18，tools/probe_g0m.ps1 + 深挖）
+
+### 物理确认（与 README 已知事实一致）
+
+- **卡在机且正常**：`Innosilicon Technologies Fantasy G Series`，
+  `PCI\VEN_1EC8&DEV_9810&SUBSYS_98101EC8&REV_00`，Status=OK，全机唯一显卡
+  （无 NVIDIA/AMD/Intel 并列），PCI bus 3 dev 0 func 0
+- 驱动 **20.17.2.18608**（2024-08-22），`Service=innokmd64`，INF=`oem89.inf`（Class=Display）
+
+### Windows 驱动栈构成（oem89.inf + System32 实查）
+
+| 组件 | 文件 | 大小 |
+|---|---|---|
+| 内核 miniport | `innokmd64.sys` | 1.2 MB |
+| 内核 | `innodim64.sys` / `innomim64.sys` | 0.5 / 1.4 MB |
+| 用户态 UMD | `innoumd64.dll` | 5 MB |
+| **OpenGL ICD** | `innoogl64.dll` | **19 MB** |
+| 视频处理 | `innovidproc64.dll` | 848 KB |
+
+INF 注册的图形接口**只有 OpenGL**（`OpenGLDriverName → innoogl64.dll`）。
+
+### 计算接口判定：Windows 侧 = 无
+
+- `OpenCL.dll` 存在（微软 ICD loader），但 `clGetPlatformIDs` 返回 **-1001**
+  （CL_PLATFORM_NOT_FOUND），平台数 = 0
+- `HKLM\SOFTWARE\Khronos\OpenCL\Vendors`、`Vulkan\ICD`、`ExplicitLayers` 注册表键**均不存在**
+- DriverStore 无 fh2m/fant 驱动文件（`acpipmi.inf_amd64_310dc613a7e31ec8` 为哈希撞名误匹配）
+- **修正 README 假设**：`llama-borrow-path.md` 说"墙在 llama.cpp 白名单，不在驱动"——
+  该结论基于 **Linux** fh2m 驱动。**Windows 侧驱动连计算 API 都不暴露**，无 OpenCL/Vulkan
+  可借。计算栈（libFTOCL / libVK_FANT）只存在于 Linux fh2m 驱动里。
+
+### 显存定性：真板载 4GB，非虚拟内存
+
+| 来源 | 数值 |
+|---|---|
+| 注册表 `HardwareInformation.qwMemorySize` | **4294967296 = 4.0 GB**（innokmd64 初始化时写入） |
+| dxdiag Dedicated Memory | 3463 MB（WDDM 专用显存，差值 ~600MB 为显示/监控保留区） |
+| dxdiag Shared Memory | 20407 MB（借用系统 RAM 的上限） |
+| dxdiag Display Memory | 23870 MB = dedicated + shared |
+| 本机系统内存 | 40 GB（故 4GB 不可能是从内存抠的） |
+
+**判定：板载 4GB 显存为实（BAR 级），WDDM 暴露 3.4GB 专用 + 可借 ~20GB 共享，
+与"VRAM→GTT spill 两级"架构自洽。** 注：PCI BAR 寄存器未能直读
+（PCIConfig 设备在 Win10 19041 缺失、ResourceMap 不可读），定案依赖
+WDDM qwMemorySize + dxdiag 双源一致。
+
+### 对决策树的影响
+
+- 分支 [B] 若走 **Windows**：死路，驱动无计算接口 → 必须上 **Linux fh2m 驱动**才可能
+  枚举到 OpenCL/Vulkan（静态分析已确认 libFTOCL / libVK_FANT 存在）
+- 分支 [C] 仅当 Linux 驱动装上后仍枚举不到时触发

@@ -33,7 +33,7 @@
 | OpenCL | `libFTOCL_fh2m.so`=薄壳包在 srv_um 上；**无厂商 gate**（libFTOCL+srv_um 双层验证） |
 | Vulkan | `libVK_FANT_fh2m.so` 完整 compute（fp16/int8/dot product/subgroup） |
 | 内存 | VRAM→GTT spill 两级；`IMGVK_UMAHeapSizeMB` 可调 |
-| 借道 | 墙在 llama.cpp 白名单，不在驱动；Vulkan 为更优路径 |
+| 借道 | Linux：墙在 llama.cpp 白名单，不在驱动；Vulkan 为更优路径。**Windows：驱动本身无计算接口（仅 OpenGL），必上 Linux fh2m 驱动** |
 
 详见 `docs/`（clinfo-prediction.md / libftocl-static-analysis.md / re-plan.md）。
 
