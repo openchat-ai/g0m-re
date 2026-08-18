@@ -1,0 +1,5 @@
+drivers/
+*.o_shipped
+*.exe
+*.tar.gz
+*.deb
