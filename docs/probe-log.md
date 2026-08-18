@@ -150,3 +150,21 @@ set 写 DWORD 需管理员，修改后需重启驱动/系统生效）。已实�
 - 菜单删除走 `Remove-ItemProperty`，未设置项删除静默成功
 - 测试用 cmd 管道 `<` 喂 stdin；PowerShell 管道喂 stdin 时 Read-Host 到 EOF 返回 null 会死循环，
   仅影响自动化测试，真实终端无此问题
+
+### 反汇编验证：HWSettings 开关读取机制（2026-08-18）
+
+**结论：开关定义表真实存在，驱动按名字从注册表读值并套用到配置结构体。**
+`LocalMemClampedSize`（钳本地显存上限）确认被驱动读取。
+
+证据（`innokmd64.sys`，capstone 反汇编 + pefile）：
+- 记录表位于 `.data`（VA `0x1400ed050`-`0x1400ed6b0`，文件偏移 `0xeae50`-`0xeb600`），
+  每条记录 `0x18` 字节 = `{名字指针, 类型(lo)+标志(hi), 结构体偏移}`
+  - 例：`DpuMatch` 类型9 偏移112 默认-1（与现网一致）
+  - `PowerManagement` 类型16 偏移100；`ForceNonsurfaceInApertureSegment` 类型33 偏移48
+  - `LocalMemClampedSize` 类型20 偏移108
+- 驱动导入 `ZwQueryValueKey`/`ZwOpenKey`（按值名读注册表）+ `IoOpenDeviceRegistryKey`（设备键）
+- `HWSettings/PowerVREurasia/PVRLDDMKMD` 路径字符串不在 KMD（在 UMD DLL `innoumd64.dll`），
+  与 IMG PowerVR EURASIA 标准机制一致：UMD 建路径，KMD 通过同一注册表键读
+
+**限制**：0/1 具体语义（如 `SupportAllocationInApertureSegment=0` 是否真禁止 GTT 分配）未反汇编到
+分配路径调用点，需实测（写注册表 → 重启驱动 → 观察实际系统内存占用）。

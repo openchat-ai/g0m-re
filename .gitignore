@@ -3,3 +3,4 @@ drivers/
 *.exe
 *.tar.gz
 *.deb
+tools/hwsettings-*.reg

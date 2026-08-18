@@ -158,6 +158,15 @@ function Read-Key([string]$scope) {
   } catch { Write-Host "    (不存在)" }
 }
 
+function Invoke-Backup {
+  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+  $out = Join-Path $PSScriptRoot "hwsettings-$stamp.reg"
+  $regPath = $Root -replace "^HKLM:", "HKEY_LOCAL_MACHINE"
+  & reg.exe export $regPath $out /y 2>$null | Out-Null
+  if (Test-Path $out) { Write-Host "备份完成: $out" -ForegroundColor Green }
+  else { Write-Host "备份失败 (reg export 出错)" -ForegroundColor Red }
+}
+
 switch ($Action) {
   "list" {
     if (!(Test-Path $Root)) { Write-Host "HWSettings 根键不存在: $Root" -ForegroundColor Yellow; exit 1 }
@@ -210,12 +219,4 @@ switch ($Action) {
   "backup" { Invoke-Backup }
   "known" { Write-Known }
   "menu" { Show-Menu }
-}
-
-function Invoke-Backup {
-  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-  $out = Join-Path $PSScriptRoot "hwsettings-$stamp.reg"
-  & reg.exe export $Root $out /y 2>$null | Out-Null
-  if (Test-Path $out) { Write-Host "备份完成: $out" -ForegroundColor Green }
-  else { Write-Host "备份失败 (reg export 出错)" -ForegroundColor Red }
 }
